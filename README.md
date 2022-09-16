@@ -1,6 +1,6 @@
 # bs - a BookStack API CLI
 
-Use:  bs <target> <endpoint> OPTIONS`
+Use:  `bs <target> <endpoint> OPTIONS`
 
 This is bs, a command line client for the BookStack wiki engine. It
 enables easy command line access to all exported API functions and as
