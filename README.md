@@ -22,21 +22,17 @@ There are two ways to point bs at the required url and authentication token:
         configuration directory ($HOME/.config/bs.conf) with the following
         contents:
 
-```
         url="https://bookstack.example.org"
         token="b0ada1c9e9a0057db44ac6dd684b93a4:8dde5bc903d297319abba326637af5f9"
-```
 
         This is only an example, replace the values with those relevant
         to your BookStack instance and account.
 
     2:  Create environment variables with the required info, e.g.
 
-```
         $ BOOKSTACK_URL="https://bookstack.example.org"
         $ BOOKSTACK_TOKEN="b0ada1c9e9a0057db44ac6dd684b93a4:8dde5bc903d297319abba326637af5f9"
         $ export BOOKSTACK_URL BOOKSTACK_TOKEN
-```
 
 Environment variables take precedence over the configuration file,
     this makes it possible to temporarily use a different instance or
@@ -86,52 +82,40 @@ to learn which parameters are available. Use these options for:
                     direction.
         -f FILTER   Filter to apply to query, consult API documentation
                     for filter syntax.
-```
 
     create, read, update, delete:
 
-```
         -i ID       Record ID to read/update/delete
         -n NAME
         -d DESCRIPTION
         -t TAGS     Tags, use 'tag1name=tag 2 value;tag2name=tag 2 value;...'
         -I IMAGE    Filename for image to add
-```
 
         parameters specific to chapters and pages:
 
-```
         -b BOOK_ID
-```
 
         parameters specific to pages:
 
-```
         -c CHAPTER_ID
         -h HTML     HTML text to add, mutually exclusive with -m
                     use @/path/to/file.html to read text from a file
 
         -m MARKDOWN Markdown text to add, mutually exclusive with -h
                     use @/path/to/file.md to read text from a file
-```
 
         parameters specific to attachments:
 
-```
         -u UPLOADED_TO
         -f FILE     Filename to attach, mutually exclusive with -l
         -l LINK     Link to attach, mutually exclusive with -f
-```
 
         parameters specific to shelves:
 
-```
         -B BOOKS    Book IDs for shelf, use '1,2,3...'
-```
 
         parameters specific to users:
 
-```
         -e EMAIL
         -a EXTERNAL_AUTH_ID
         -L LANGUAGE
@@ -139,17 +123,14 @@ to learn which parameters are available. Use these options for:
         -r ROLES    Roles, use '1,2,3...'
         -s          Send invite
         -M MIGRATE_OWNERSHIP_ID Migrate data ownership for deleted user.
-```
 
     search:
 
-```
         -q QUERY    Search query
         -p PAGE     Results page to show
         -c COUNT    Number of results per page
                     Count value is taken as a suggestion only,
                     see API documentation [1]
-```
 
 
 ## OUTPUT
@@ -177,10 +158,8 @@ Show details for page with id 12345
 Create a book with title "Book of Books" and description "A book about
 books" with a cover image of a Pozzebok and two tags
 
-```
     bs books create -n "Book of Books" -d "A book about books" \
     -I /tmp/pozzebok.png -t 'subject=a book on books;cover=image of a pozzebok'
-```
 
 Search for this book
 
@@ -198,14 +177,12 @@ Create page and attach it to chapter #456, using markdown. Notice the
 markdown content is spread over several lines with empty lines in between
 and that double quotes in the content are escaped.
 
-```
     bs pages create -c 456 -n "Page of Pages" -m "#Page of Pages
     This is the first line of the first page.
 
     And this is the second one, a _masterwork_ in the making.
 
     Don't forget to \"escape\" double quotes"
-```
 
 Delete that useless page you just made
 
@@ -213,18 +190,14 @@ Delete that useless page you just made
 
 Create another page, this time reading markdown/html page content from a file
 
-```
     bs pages create -c 456 -n "Page the second" -m @/home/me/Documents/magnum_opus.md
     bs pages create -c 456 -n "Page the second" -h @/home/me/Documents/magnum_opus.html
-```
 
 Export a book/chapter/page to PDF/HTML/Markdown, redirecting output to a file
 
-```
     bs books export-pdf -i 6679 > book_6679.pdf
     bs chapters export-html -i 112 > chapter_112.html
     bs page export-markdown -i 5665 > page_5665.md
-```
 
 Attach a file to a page with ID 5678
 
