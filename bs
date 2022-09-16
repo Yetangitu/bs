@@ -1,0 +1,875 @@
+#!/usr/bin/env bash
+
+trap "trap_error" TERM
+trap "trap_clean" EXIT
+export TOP_PID=$$
+
+version="0.0.1"
+release="20220914"
+
+tmpdir=$(mktemp -d /tmp/bs.XXXXXX)
+
+main () {
+    # PREFERENCES
+    config=${XDG_CONFIG_HOME:-$HOME/.config}/bs.conf
+
+    # source config file if it exists
+    [[ -f ${config} ]] && source "${config}"
+
+    # get/override settings from environment
+    [ -n "$BOOKSTACK_URL" ] && url="$BOOKSTACK_URL"
+    [ -n "$BOOKSTACK_TOKEN" ] && token="$BOOKSTACK_TOKEN"
+
+    # make sure dependencies are available
+    curl=$(find_tool "curl")
+    jq=$(find_tool "jq")
+
+    target="$1"
+    shift
+
+    if [ -z $url -a -z $token ]; then
+    printf "$0: No config file and no environment variables set, can not continue.\n\nEither create a config file by executing '$0 config' or provide\nthe needed configuration data by setting BOOKSTACK_URL and\nBOOKSTACK_TOKEN - see 'bs help' for more info.\n\n"
+
+        case $target in
+            help)
+                show_help
+                ;;
+
+            config)
+                edit_config
+                ;;
+
+            *)
+                exit_with_error "Only \"bs config\" and \"bs help\" are available without a valid url/token"
+                ;;
+        esac
+
+    exit 1
+    fi
+
+    case $target in
+        books|chapters|pages)
+            content $target "$@"
+            ;;
+
+        attachments|shelves|users)
+            a_s_u $target "$@"
+            ;;
+
+        docs|search|recycle-bin)
+            $target "$@"
+            ;;
+
+        help)
+            show_help
+            ;;
+
+        config)
+            edit_config
+            ;;
+
+        *)
+            exit_with_error "unknown API endpoint: $target"
+            ;;
+    esac
+}
+
+# -- target functions
+
+content () {
+    branch="$1"
+    endpoint="$2"
+    shift 2
+    case "$endpoint" in
+        list)
+            list $branch "$@"
+            ;;
+
+        export-html|export-pdf|export-plaintext|export-markdown)
+            while getopts "i:" OPTION
+            do
+                case "$OPTION" in
+                    i)
+                        id="$OPTARG"
+                        ;;
+
+                    *)
+                        exit_with_error "unknown parameter for $branch/$endpoint: $OPTION"
+                        ;;
+                esac
+            done
+
+            [ -z "$id" ] && exit_with_error "required parameter(s) missing: id"
+            get $branch "$id" "export/${endpoint#export-}"
+            ;;
+
+        create|read|update|delete)
+            crud "$branch" "$endpoint" "$@"
+            ;;
+
+        *)
+            exit_with_error "unsupported"
+            ;;
+    esac
+}
+
+a_s_u () {
+    branch="$1"
+    endpoint="$2"
+    shift 2
+    case "$endpoint" in
+        list)
+            list $branch "$@"
+            ;;
+
+        create|read|update|delete)
+            crud "$branch" "$endpoint" "$@"
+            ;;
+
+        *)
+            exit_with_error "unknown API endpoint for $branch: $endpoint"
+            ;;
+    esac
+}
+
+docs () {
+    branch="${FUNCNAME[0]}"
+    endpoint="$1"
+    shift
+    case "$endpoint" in
+        json)
+            get docs.json
+            ;;
+
+        display|*)
+            get docs
+            ;;
+
+        *)
+            exit_with_error "unknown API endpoint for $branch: $endpoint"
+            ;;
+    esac
+}
+
+search () {
+    branch="${FUNCNAME[0]}"
+    unset query
+    declare -a required=(query)
+    while getopts "q:p:c:" OPTION
+    do
+        case "$OPTION" in
+            q)
+                query="${query:-?}${query:+&}query=$(urlencode "$OPTARG")"
+                requirement "query"
+                ;;
+
+            p)
+                query="${query:-?}${query:+&}page=$OPTARG"
+                ;;
+
+            c)
+                query="${query:-?}${query:+&}count=$OPTARG"
+                ;;
+
+            *)
+                exit_with_error "unknown $branch parameter: $OPTION"
+                ;;
+        esac
+    done
+
+    if [ ${#required[@]} -gt 0 ]; then
+        exit_with_error "required parameter(s) missing: ${required[*]}"
+    fi
+
+    get $branch "$query"
+}
+
+recycle-bin () {
+    unset query
+    branch="${FUNCNAME[0]}"
+    endpoint="$1"
+    shift
+    while getopts "i:c:" OPTION
+    do
+        case "$OPTION" in
+            i)
+                id="$OPTARG"
+                ;;
+
+            c)
+                query="${query:-?}${query:+&}count=$OPTARG"
+                ;;
+
+            *)
+                exit_with_error "unknown parameter for $branch: $OPTION"
+                ;;
+        esac
+    done
+
+    case "$endpoint" in
+        list)
+            get $branch "$query"
+            ;;
+
+        restore)
+            [ -z "$id" ] && exit_with_error "required parameter(s) missing: id"
+            put $branch "$id"
+            ;;
+
+        destroy)
+            [ -z "$id" ] && exit_with_error "required parameter(s) missing: id"
+            delete $branch "$id"
+            ;;
+
+        *)
+            exit_with_error "unknown API endpoint for $branch: $endpoint"
+            ;;
+    esac
+}
+
+# -- endpoint helper functions
+
+list () {
+    unset query
+    branch="$1"
+    shift
+    while getopts "c:o:s:f:" OPTION
+    do
+        case "$OPTION" in
+            c)
+                query="${query:-?}${query:+&}count=$OPTARG"
+                ;;
+
+            o)
+                query="${query:-?}${query:+&}offset=$OPTARG"
+                ;;
+
+            s)
+                query="${query:-?}${query:+&}sort=$OPTARG"
+                ;;
+
+            f)
+                query="${query:-?}${query:+&}filter=$OPTARG"
+                ;;
+
+            *)
+                exit_with_error "unknown $branch parameter: $OPTION"
+                ;;
+        esac
+    done
+
+    get $branch "$query"
+
+}
+
+crud () {
+    unset data
+    unset fdata
+    tagcount=0
+    bookcount=0
+    branch="$1"
+    endpoint="$2"
+    shift 2
+
+    declare -a required
+    declare -a fdata
+
+    case "$branch" in
+        books)
+            opts="i:n:d:t:I:"
+            required=(name)
+            ;;
+
+        chapters)
+            opts="i:b:n:d:t:"
+            required=(book_id name)
+            ;;
+
+        pages)
+            opts="i:b:c:n:h:m:t:"
+            required=(name book_id chapter_id html markdown)
+            ;;
+
+        attachments)
+            opts="i:n:u:f:l:"
+            required=(name uploaded_to file link)
+            ;;
+
+        shelves)
+            opts="i:n:d:B:t:I:"
+            required=(name)
+            ;;
+
+        users)
+            opts="i:n:e:a:L:p:r:R:sM:"
+            required=(name email)
+            ;;
+    esac
+
+    if [[ $endpoint =~ read|update|delete ]]; then
+        required=(id)
+    fi
+
+    while getopts "$opts" OPTION
+    do
+        case "$OPTION" in
+            i)
+                id="$OPTARG"
+                requirement "id"
+                ;;
+
+            n)
+                data+=${data:+,}'"name":'$(json_escape "$OPTARG")
+                fdata+=(-F "name=$OPTARG")
+                requirement "name"
+                ;;
+
+            d)
+                data+=${data:+,}'"description":'$(json_escape "$OPTARG")
+                fdata+=(-F "description=$OPTARG")
+                ;;
+
+            t)
+                unset tagsets
+                data+=${data:+,}'"tags":['
+                IFS=';' read -ra tagsets <<< "$OPTARG"
+                for tagset in "${tagsets[@]}"; do
+                    IFS='=' read name value <<< "$tagset"
+                    data+=$comma'{"name":'$(json_escape "$name")',"value":'$(json_escape "$value")'}'
+                    comma=','
+                    fdata+=(-F "tags[$tagcount][name]=$name" -F "tags[$tagcount][value]=$value")
+                    ((tagcount++))
+                done
+                data+=']'
+                ;;
+
+            I)
+                mtype=$(mimetype -b "$OPTARG")
+                form="image=@$OPTARG;type=$mtype"
+                ;;
+
+            ### used in chapters and pages
+            b)
+                data+=${data:+,}'"book_id":"'"$OPTARG"'"'
+                requirement "book_id chapter_id"
+                ;;
+
+            ### specific to pages
+            c)
+                data+=${data:+,}'"chapter_id":"'"$OPTARG"'"'
+                requirement "book_id chapter_id"
+                ;;
+
+            h)
+                if [ "${OPTARG:0:1}" == "@" -a -r "${OPTARG:1}" ]; then
+                    content="${OPTARG:1}"
+                    content_type="html"
+                else
+                    data+=${data:+,}'"html":'$(json_escape "$OPTARG")
+                fi
+                requirement "html markdown"
+                ;;
+
+            m)
+                if [ "${OPTARG:0:1}" == "@" -a -r "${OPTARG:1}" ]; then
+                    content="${OPTARG:1}"
+                    content_type="markdown"
+                else
+                    data+=${data:+,}'"markdown":'$(json_escape "$OPTARG")
+                fi
+                requirement "html markdown"
+                ;;
+
+            ### specific to attachments
+            u)
+                data+=${data:+,}'"uploaded_to":"'"$OPTARG"'"'
+                fdata+=(-F "uploaded_to=$OPTARG")
+                requirement "uploaded_to"
+                ;;
+
+            f)
+                form="file=@$OPTARG"
+                requirement "file link"
+                ;;
+
+            l)
+                data+=${data:+,}'"link":'$(json_escape "$OPTARG")
+                requirement "file link"
+                ;;
+
+            ### specific to shelves
+            B)
+                unset books
+                data+=${data:+,}'"books":['
+                IFS=',' read -ra books <<< "$OPTARG"
+                for book in "${books[@]}"; do
+                    data+=${comma}${book}
+                    comma=','
+                    fdata+=(-F "books[$bookcount]=$book")
+                    ((bookcount++))
+                done
+                data+=']'
+                ;;
+
+            ### specific to users
+            e)
+                data+=${data:+,}'"email":'$(json_escape "$OPTARG")
+                requirement "email"
+                ;;
+
+            a)
+                data+=${data:+,}'"external_auth_id":'$(json_escape "$OPTARG")
+                ;;
+
+            L)
+                data+=${data:+,}'"language":'$(json_escape "$OPTARG")
+                ;;
+
+            p)
+                data+=${data:+,}'"password":'$(json_escape "$OPTARG")
+                ;;
+
+            r)
+                data+=${data:+,}'"roles":['"$OPTARG"']'
+                ;;
+
+            s)
+                data+=${data:+,}'"send_invite": true'
+                ;;
+
+            M)
+                data+=${data:+,}'"migrate_ownership_id":"'"$OPTARG"'"'
+                ;;
+
+            *)
+                exit_with_error "unknown parameter for $branch: $OPTION"
+                ;;
+        esac
+    done
+
+    if [ ${#required[@]} -gt 0 ]; then
+        exit_with_error "required parameter(s) missing: ${required[*]}"
+    fi
+
+    case "$endpoint" in
+        create)
+            if [ -n "$content" ]; then
+                tmpfile="$tmpdir/data.json"
+                echo "{$data,\"$content_type\":" > "$tmpfile"
+                "$jq" -Rsa . "$content" >> "$tmpfile"
+                echo "}" >> "$tmpfile"
+                post $branch --json "@$tmpdir/data.json"
+                unlink "$tmpfile"
+            else
+                if [ -n "$form" ]; then
+                    post $branch "${fdata[@]}" -F "$form"
+                else
+                    post $branch --json "{$data}"
+                fi
+            fi
+            ;;
+
+        read)
+            get $branch "$id"
+            ;;
+
+        update)
+            if [ -n "$content" ]; then
+                tmpfile="$tmpdir/data.json"
+                echo "{$data,\"$content_type\":" > "$tmpfile"
+                "$jq" -Rsa . "$content" >> "$tmpfile"
+                echo "}" >> "$tmpfile"
+                put $branch "$id" --json "@$tmpdir/data.json"
+                unlink "$tmpfile"
+            else
+                if [ -n "$form" ]; then
+                    put $branch "$id" "${fdata[@]}" -F "$form"
+                else
+                    put $branch "$id" --json "{$data}"
+                fi
+            fi
+            ;;
+
+        delete)
+            if [ -n "$data" ]; then
+                delete $branch "$id" --json "{$data}"
+            else
+                delete $branch "$id"
+            fi
+            ;;
+    esac
+}
+
+# -- http method functions
+
+get () {
+    endpoint="$1"
+    id="$2"
+    target="$3"
+    shift 3
+
+    "$curl" --http1.1 --header "Authorization: Token $token" --request GET --url "$url/api/$endpoint${id:+/}$id${target:+/}$target"
+}
+
+put () {
+    endpoint="$1"
+    id="$2"
+    shift 2
+
+    "$curl" --http1.1 --header "Authorization: Token $token" --request PUT --url "$url/api/$endpoint/$id" "$@"
+}
+
+post () {
+    endpoint="$1"
+    shift
+
+    "$curl" --http1.1 --header "Authorization: Token $token" --request POST --url "$url/api/$endpoint" "$@"
+}
+
+delete () {
+    endpoint="$1"
+    id="$2"
+    shift 2
+
+    "$curl" --http1.1 --header "Authorization: Token $token" --request DELETE --url "$url/api/$endpoint/$id" "$@"
+}
+
+# -- utility functions
+
+requirement () {
+    remove="$@"
+    for target in $remove; do
+        for i in "${!required[@]}"; do
+            if [[ ${required[i]} = $target ]]; then
+                unset 'required[i]'
+            fi
+        done
+    done
+}
+
+# based on https://unix.stackexchange.com/questions/60653/urlencode-function
+
+urlencode () {
+    unset format
+    string="$1"
+    shift
+    set --
+    while
+        LC_ALL=C literal="${string%%[!-._~0-9A-Za-z]*}"
+        case "$literal" in
+            ?*)
+                format="$format%s"
+                set -- "$@" "$literal"
+                string="${string#$literal}"
+                ;;
+        esac
+        case "$string" in
+            "")
+                false
+                ;;
+        esac
+    do
+        tail="${string#?}"
+        head="${string%$tail}"
+        format="$format%%%02x"
+        set -- "$@" "'$head"
+        string="$tail"
+    done
+    printf "$format\\n" "$@"
+}
+
+json_escape () {
+    echo "$1"|"$jq" -Rsa .
+}
+
+edit_config () {
+    if [ ! -r "$config" ]; then
+        printf "# bs (BookStack API CLI) configuration file\n# Add BookStack instance url after url=\n# Use Edit Profile > API Tokens > Create Token in BookStack\n# to create a new Token ID and Token Secret and\n# add add these (separated by a colon) after token=\n\nurl=\ntoken=" > "$config"
+    fi
+    if [ -n "$VISUAL" ]; then
+        editor="$VISUAL"
+    elif [ -n "$EDITOR" ]; then
+        editor="$EDITOR"
+    else
+        editor="vi"
+    fi
+    $editor "$config"
+}
+
+find_tool () {
+    tool="$1"
+    if [[ -z $(which "$tool") ]]; then
+        exit_with_error "missing program: $1; please install and try again"                                                                                                    
+    fi                                                                                                                                                                             
+    echo "$tool"                                                                                                                                                                           
+}               
+
+cleanup () {
+    if [ -d "$tmpdir" ]; then
+        rm -rf "$tmpdir"
+    fi
+}
+
+# echo error message to stderr and terminate main
+exit_with_error () {
+        echo -e "$(basename "$0"): $*" >&2
+
+        kill -s TERM "$TOP_PID"
+}
+
+trap_error () {
+    cleanup
+
+        exit 1
+}
+
+trap_clean () {
+    cleanup
+
+        exit
+}
+
+# -- documentation
+
+show_help () {
+    echo "$(basename "$(readlink -f "$0")")" "version $version"
+    cat << 'EOF'
+
+    Use: bs <target> <endpoint> OPTIONS
+
+    This is bs, a command line client for the BookStack wiki engine. It
+    enables easy command line access to all exported API functions and as
+    such can be used to automate content and user management.
+
+
+    EXTERNAL DEPENDENCIES
+
+        - bash
+        - curl
+        - jq
+
+
+    CONFIGURATION
+
+    There are two ways to point bs at the required url and authentication token:
+
+        1:  Run 'bs config' or manually create a configuration file in the XDG
+            configuration directory ($HOME/.config/bs.conf) with the following
+            contents:
+
+            url="https://bookstack.example.org"
+            token="b0ada1c9e9a0057db44ac6dd684b93a4:8dde5bc903d297319abba326637af5f9"
+
+            This is only an example, replace the values with those relevant
+            to your BookStack instance and account.
+
+        2:  Create environment variables with the required info, e.g.
+
+            $ BOOKSTACK_URL="https://bookstack.example.org"
+            $ BOOKSTACK_TOKEN="b0ada1c9e9a0057db44ac6dd684b93a4:8dde5bc903d297319abba326637af5f9"
+            $ export BOOKSTACK_URL BOOKSTACK_TOKEN
+
+    Environment variables take precedence over the configuration file,
+        this makes it possible to temporarily use a different instance or
+        account:
+
+        $ BOOKSTACK_TOKEN="...:..." bs books list
+
+
+    API ENDPOINTS
+
+    These are the BookStack API [1] targets and endpoints as they are
+    supported in bs:
+
+        pages, chapters, books
+
+            list, create, read, update, delete, export-html, export-pdf,
+            export-plain-text, export-markdown
+
+        shelves, attachments, users
+
+            list, create, read, update, delete
+
+        docs
+
+            display, json
+
+        search
+
+            all (implicit, just use 'bs search -q <searchterm>')
+
+        recycle-bin
+
+            list, restore, destroy
+
+
+    OPTIONS
+
+    API parameters are passed as options, check the API documentation [1]
+    to learn which parameters are available. Use these options for:
+
+        list:
+
+            -c COUNT    How many records will be returned in the response.
+            -o OFFSET   How many records to skip over in the response. 
+            -s SORT     Which field to sort on, +/- prefix indicates sort
+                        direction.
+            -f FILTER   Filter to apply to query, consult API documentation
+                        for filter syntax.
+
+        create, read, update, delete:
+
+            -i ID       Record ID to read/update/delete
+            -n NAME
+            -d DESCRIPTION
+            -t TAGS     Tags, use 'tag1name=tag 2 value;tag2name=tag 2 value;...'
+            -I IMAGE    Filename for image to add
+
+            parameters specific to chapters and pages:
+
+            -b BOOK_ID
+
+            parameters specific to pages:
+
+            -c CHAPTER_ID
+            -h HTML     HTML text to add, mutually exclusive with -m
+                        use @/path/to/file.html to read text from a file
+
+            -m MARKDOWN Markdown text to add, mutually exclusive with -h
+                        use @/path/to/file.md to read text from a file
+
+            parameters specific to attachments:
+
+            -u UPLOADED_TO
+            -f FILE     Filename to attach, mutually exclusive with -l
+            -l LINK     Link to attach, mutually exclusive with -f
+
+            parameters specific to shelves:
+
+            -B BOOKS    Book IDs for shelf, use '1,2,3...'
+
+            parameters specific to users:
+
+            -e EMAIL
+            -a EXTERNAL_AUTH_ID
+            -L LANGUAGE
+            -p PASSWORD
+            -r ROLES    Roles, use '1,2,3...'
+            -s          Send invite
+            -M MIGRATE_OWNERSHIP_ID Migrate data ownership for deleted user.
+
+        search:
+
+            -q QUERY    Search query
+            -p PAGE     Results page to show
+            -c COUNT    Number of results per page
+                        Count value is taken as a suggestion only,
+                        see API documentation [1]
+
+
+    OUTPUT
+
+    All API responses are in compact json format. To make this a bit more human readable the
+    output can be piped through jq:
+
+        bs books list|jq '.'
+
+
+    EXAMPLES
+
+    List available books
+
+        bs books list
+
+    Again, this time 500 results, start at offset #1000
+
+        bs books list -c 500 -o 1000
+            
+    Show details for page with id 12345
+
+        bs pages read -i 12345
+
+    Create a book with title "Book of Books" and description "A book about
+    books" with a cover image of a Pozzebok and two tags
+
+        bs books create -n "Book of Books" -d "A book about books" \
+        -I /tmp/pozzebok.png -t 'subject=a book on books;cover=image of a pozzebok'
+
+    Search for this book
+
+        bs search -q "Book of Books"
+
+    Delete the book with ID=23456
+
+        bs books delete -i 23456
+
+    Create a chapter in book #4242
+
+        bs chapters create -b 4242 -n "First Chapter" -d "Obviously the first chapter"
+
+    Create page and attach it to chapter #456, using markdown. Notice the
+    markdown content is spread over several lines with empty lines in between
+    and that double quotes in the content are escaped.
+
+        bs pages create -c 456 -n "Page of Pages" -m "#Page of Pages
+        This is the first line of the first page.
+
+        And this is the second one, a _masterwork_ in the making.
+
+        Don't forget to \"escape\" double quotes"
+
+    Delete that useless page you just made
+
+        bs pages delete -i 66753
+
+    Create another page, this time reading markdown/html page content from a file
+
+        bs pages create -c 456 -n "Page the second" -m @/home/me/Documents/magnum_opus.md
+        bs pages create -c 456 -n "Page the second" -h @/home/me/Documents/magnum_opus.html
+
+    Export a book/chapter/page to PDF/HTML/Markdown, redirecting output to a file
+
+        bs books export-pdf -i 6679 > book_6679.pdf
+        bs chapters export-html -i 112 > chapter_112.html
+        bs page export-markdown -i 5665 > page_5665.md
+
+    Attach a file to a page with ID 5678
+
+        bs attachments create -n "Deep Image" -u 5678 -f /tmp/deepimage.png
+
+    Attach a link to the same page
+
+        bs attachments create -n "Deeper Image" -u 5678 -l 'https://example.org/deeperimage.png'
+
+    List the first 200 attachments
+
+        bs attachments list -c 200
+
+    Create a shelf and put a few books on it
+
+        bs shelves create -n "Billy" -d "IKEA Bookshelf" -B 456,654,345,3343 -I /tmp/billy.jpg
+
+    List the contents of the recycle bin, showing 100 entries
+
+        bs recycle-bin list -c 100
+
+    Restore entry #34 from the recycle bin
+
+        bs recycle-bin restore -i 34
+
+    Create a user
+
+        bs users create -n "Billy Bob" -e "billybob@example.org" -L "Klingon" -p "b1llyb0b123"
+
+    Edit the bs config file
+
+        bs config
+
+    ---
+
+        [1] https://demo.bookstackapp.com/api/docs
+
+EOF
+}
+
+main "$@"
