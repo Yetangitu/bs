@@ -18,25 +18,24 @@ such can be used to automate content and user management.
 
 There are two ways to point bs at the required url and authentication token:
 
-    1:  Run 'bs config' or manually create a configuration file in the XDG
-        configuration directory ($HOME/.config/bs.conf) with the following
-        contents:
+1:  Run 'bs config' or manually create a configuration file in the XDG
+    configuration directory ($HOME/.config/bs.conf) with the following
+    contents:
 
-        url="https://bookstack.example.org"
-        token="b0ada1c9e9a0057db44ac6dd684b93a4:8dde5bc903d297319abba326637af5f9"
+    url="https://bookstack.example.org"
+    token="b0ada1c9e9a0057db44ac6dd684b93a4:8dde5bc903d297319abba326637af5f9"
 
-        This is only an example, replace the values with those relevant
-        to your BookStack instance and account.
+    This is only an example, replace the values with those relevant
+    to your BookStack instance and account.
 
-    2:  Create environment variables with the required info, e.g.
+2:  Create environment variables with the required info, e.g.
 
-        $ BOOKSTACK_URL="https://bookstack.example.org"
-        $ BOOKSTACK_TOKEN="b0ada1c9e9a0057db44ac6dd684b93a4:8dde5bc903d297319abba326637af5f9"
-        $ export BOOKSTACK_URL BOOKSTACK_TOKEN
+    $ BOOKSTACK_URL="https://bookstack.example.org"
+    $ BOOKSTACK_TOKEN="b0ada1c9e9a0057db44ac6dd684b93a4:8dde5bc903d297319abba326637af5f9"
+    $ export BOOKSTACK_URL BOOKSTACK_TOKEN
 
-Environment variables take precedence over the configuration file,
-    this makes it possible to temporarily use a different instance or
-    account:
+Environment variables take precedence over the configuration file, this makes
+it possible to temporarily use a different instance or account:
 
     `$ BOOKSTACK_TOKEN="...:..." bs books list`
 
@@ -46,26 +45,26 @@ Environment variables take precedence over the configuration file,
 These are the BookStack API [1] targets and endpoints as they are
 supported in bs:
 
-    pages, chapters, books
+### pages, chapters, books
 
-        list, create, read, update, delete, export-html, export-pdf,
-        export-plain-text, export-markdown
+    list, create, read, update, delete, export-html, export-pdf,
+    export-plain-text, export-markdown
 
-    shelves, attachments, users
+### shelves, attachments, users
 
-        list, create, read, update, delete
+    list, create, read, update, delete
 
-    docs
+### docs
 
-        display, json
+    display, json
 
-    search
+### search
 
-        all (implicit, just use 'bs search -q <searchterm>')
+    all (implicit, just use 'bs search -q <searchterm>')
 
-    recycle-bin
+### recycle-bin
 
-        list, restore, destroy
+    list, restore, destroy
 
 
 ## OPTIONS
@@ -75,62 +74,61 @@ to learn which parameters are available. Use these options for:
 
     list:
 
-```
-        -c COUNT    How many records will be returned in the response.
-        -o OFFSET   How many records to skip over in the response. 
-        -s SORT     Which field to sort on, +/- prefix indicates sort
-                    direction.
-        -f FILTER   Filter to apply to query, consult API documentation
-                    for filter syntax.
+    -c COUNT    How many records will be returned in the response.
+    -o OFFSET   How many records to skip over in the response. 
+    -s SORT     Which field to sort on, +/- prefix indicates sort
+                direction.
+    -f FILTER   Filter to apply to query, consult API documentation
+                for filter syntax.
 
     create, read, update, delete:
 
-        -i ID       Record ID to read/update/delete
-        -n NAME
-        -d DESCRIPTION
-        -t TAGS     Tags, use 'tag1name=tag 2 value;tag2name=tag 2 value;...'
-        -I IMAGE    Filename for image to add
+    -i ID       Record ID to read/update/delete
+    -n NAME
+    -d DESCRIPTION
+    -t TAGS     Tags, use 'tag1name=tag 2 value;tag2name=tag 2 value;...'
+    -I IMAGE    Filename for image to add
 
-        parameters specific to chapters and pages:
+    parameters specific to chapters and pages:
 
-        -b BOOK_ID
+    -b BOOK_ID
 
-        parameters specific to pages:
+    parameters specific to pages:
 
-        -c CHAPTER_ID
-        -h HTML     HTML text to add, mutually exclusive with -m
-                    use @/path/to/file.html to read text from a file
+    -c CHAPTER_ID
+    -h HTML     HTML text to add, mutually exclusive with -m
+                use @/path/to/file.html to read text from a file
 
-        -m MARKDOWN Markdown text to add, mutually exclusive with -h
-                    use @/path/to/file.md to read text from a file
+    -m MARKDOWN Markdown text to add, mutually exclusive with -h
+                use @/path/to/file.md to read text from a file
 
-        parameters specific to attachments:
+    parameters specific to attachments:
 
-        -u UPLOADED_TO
-        -f FILE     Filename to attach, mutually exclusive with -l
-        -l LINK     Link to attach, mutually exclusive with -f
+    -u UPLOADED_TO
+    -f FILE     Filename to attach, mutually exclusive with -l
+    -l LINK     Link to attach, mutually exclusive with -f
 
-        parameters specific to shelves:
+    parameters specific to shelves:
 
-        -B BOOKS    Book IDs for shelf, use '1,2,3...'
+    -B BOOKS    Book IDs for shelf, use '1,2,3...'
 
-        parameters specific to users:
+    parameters specific to users:
 
-        -e EMAIL
-        -a EXTERNAL_AUTH_ID
-        -L LANGUAGE
-        -p PASSWORD
-        -r ROLES    Roles, use '1,2,3...'
-        -s          Send invite
-        -M MIGRATE_OWNERSHIP_ID Migrate data ownership for deleted user.
+    -e EMAIL
+    -a EXTERNAL_AUTH_ID
+    -L LANGUAGE
+    -p PASSWORD
+    -r ROLES    Roles, use '1,2,3...'
+    -s          Send invite
+    -M MIGRATE_OWNERSHIP_ID Migrate data ownership for deleted user.
 
     search:
 
-        -q QUERY    Search query
-        -p PAGE     Results page to show
-        -c COUNT    Number of results per page
-                    Count value is taken as a suggestion only,
-                    see API documentation [1]
+    -q QUERY    Search query
+    -p PAGE     Results page to show
+    -c COUNT    Number of results per page
+                Count value is taken as a suggestion only,
+                see API documentation [1]
 
 
 ## OUTPUT
@@ -177,12 +175,14 @@ Create page and attach it to chapter #456, using markdown. Notice the
 markdown content is spread over several lines with empty lines in between
 and that double quotes in the content are escaped.
 
+```
     bs pages create -c 456 -n "Page of Pages" -m "#Page of Pages
     This is the first line of the first page.
 
     And this is the second one, a _masterwork_ in the making.
 
     Don't forget to \"escape\" double quotes"
+```
 
 Delete that useless page you just made
 
@@ -190,14 +190,18 @@ Delete that useless page you just made
 
 Create another page, this time reading markdown/html page content from a file
 
+```
     bs pages create -c 456 -n "Page the second" -m @/home/me/Documents/magnum_opus.md
     bs pages create -c 456 -n "Page the second" -h @/home/me/Documents/magnum_opus.html
+```
 
 Export a book/chapter/page to PDF/HTML/Markdown, redirecting output to a file
 
+```
     bs books export-pdf -i 6679 > book_6679.pdf
     bs chapters export-html -i 112 > chapter_112.html
     bs page export-markdown -i 5665 > page_5665.md
+```
 
 Attach a file to a page with ID 5678
 
