@@ -2,7 +2,7 @@
 
 Use:  `bs <target> <endpoint> OPTIONS`
 
-This is bs, a command line client for the BookStack wiki engine. It
+This is _bs_, a command line client for the BookStack wiki engine. It
 enables easy command line access to all exported API functions and as
 such can be used to automate content and user management.
 
@@ -18,8 +18,8 @@ such can be used to automate content and user management.
 
 There are two ways to point bs at the required url and authentication token:
 
-1:  Run 'bs config' or manually create a configuration file in the XDG
-    configuration directory ($HOME/.config/bs.conf) with the following
+1:  Run `bs config` or manually create a configuration file in the XDG
+    configuration directory (`$HOME/.config/bs.conf`) with the following
     contents:
 
     url="https://bookstack.example.org"
@@ -37,13 +37,13 @@ There are two ways to point bs at the required url and authentication token:
 Environment variables take precedence over the configuration file, this makes
 it possible to temporarily use a different instance or account:
 
-    `$ BOOKSTACK_TOKEN="...:..." bs books list`
+    $ BOOKSTACK_TOKEN="...:..." bs books list
 
 
 ## API ENDPOINTS
 
 These are the BookStack API [1] targets and endpoints as they are
-supported in bs:
+supported in _bs_:
 
 ### pages, chapters, books
 
@@ -133,25 +133,25 @@ to learn which parameters are available. Use these options for:
 
 ## OUTPUT
 
-All API responses are in compact json format. To make this a bit more human readable the
-output can be piped through jq:
+All API responses are in compact _json_ format. To make this a bit more human readable the
+output can be piped through _jq_:
 
-    `bs books list|jq '.'`
+    bs books list|jq '.'
 
 
 ## EXAMPLES
 
 List available books
 
-    `bs books list`
+    bs books list
 
 Again, this time 500 results, start at offset #1000
 
-    `bs books list -c 500 -o 1000`
+    bs books list -c 500 -o 1000
         
 Show details for page with id 12345
 
-    `bs pages read -i 12345`
+    bs pages read -i 12345
 
 Create a book with title "Book of Books" and description "A book about
 books" with a cover image of a Pozzebok and two tags
@@ -161,79 +161,73 @@ books" with a cover image of a Pozzebok and two tags
 
 Search for this book
 
-    `bs search -q "Book of Books"`
+    bs search -q "Book of Books"
 
 Delete the book with ID=23456
 
-    `bs books delete -i 23456`
+    bs books delete -i 23456
 
 Create a chapter in book #4242
 
-    `bs chapters create -b 4242 -n "First Chapter" -d "Obviously the first chapter"`
+    bs chapters create -b 4242 -n "First Chapter" -d "Obviously the first chapter"
 
 Create page and attach it to chapter #456, using markdown. Notice the
 markdown content is spread over several lines with empty lines in between
 and that double quotes in the content are escaped.
 
-```
     bs pages create -c 456 -n "Page of Pages" -m "#Page of Pages
     This is the first line of the first page.
 
     And this is the second one, a _masterwork_ in the making.
 
     Don't forget to \"escape\" double quotes"
-```
 
 Delete that useless page you just made
 
-    `bs pages delete -i 66753`
+    bs pages delete -i 66753
 
 Create another page, this time reading markdown/html page content from a file
 
-```
     bs pages create -c 456 -n "Page the second" -m @/home/me/Documents/magnum_opus.md
     bs pages create -c 456 -n "Page the second" -h @/home/me/Documents/magnum_opus.html
-```
 
 Export a book/chapter/page to PDF/HTML/Markdown, redirecting output to a file
 
-```
     bs books export-pdf -i 6679 > book_6679.pdf
     bs chapters export-html -i 112 > chapter_112.html
     bs page export-markdown -i 5665 > page_5665.md
-```
 
 Attach a file to a page with ID 5678
 
-    `bs attachments create -n "Deep Image" -u 5678 -f /tmp/deepimage.png`
+    bs attachments create -n "Deep Image" -u 5678 -f /tmp/deepimage.png
 
 Attach a link to the same page
 
-    `bs attachments create -n "Deeper Image" -u 5678 -l 'https://example.org/deeperimage.png'`
+    bs attachments create -n "Deeper Image" -u 5678 -l 'https://example.org/deeperimage.png'
 
 List the first 200 attachments
 
-    `bs attachments list -c 200`
+    bs attachments list -c 200
 
 Create a shelf and put a few books on it
 
-    `bs shelves create -n "Billy" -d "IKEA Bookshelf" -B 456,654,345,3343 -I /tmp/billy.jpg`
+    bs shelves create -n "Billy" -d "IKEA Bookshelf" -B 456,654,345,3343 -I /tmp/billy.jpg
 
 List the contents of the recycle bin, showing 100 entries
 
-    `bs recycle-bin list -c 100`
+    bs recycle-bin list -c 100
 
 Restore entry #34 from the recycle bin
 
-    `bs recycle-bin restore -i 34`
+    bs recycle-bin restore -i 34
 
 Create a user
 
-    `bs users create -n "Billy Bob" -e "billybob@example.org" -L "Klingon" -p "b1llyb0b123"`
+    bs users create -n "Billy Bob" -e "billybob@example.org" -L "Klingon" -p "b1llyb0b123"
 
-Edit the bs config file
+Edit the _bs_ config file
 
-    `bs config`
+    bs config
 
 ---
 
