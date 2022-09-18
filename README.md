@@ -1,6 +1,6 @@
 # bs - a BookStack API CLI
 
-Use:  `bs <target> <endpoint> OPTIONS`
+Use:  `bs BS_OPTIONS <target> <endpoint> API_OPTIONS`
 
 This is _bs_, a command line client for the BookStack wiki engine. It
 enables easy command line access to all exported API functions and as
@@ -28,6 +28,16 @@ There are two ways to point bs at the required url and authentication token:
     This is only an example, replace the values with those relevant
     to your BookStack instance and account.
 
+    In addition to the default url=/token= parameters bs also supports
+    named hosts and users which can be selected on invocation, these
+    are configured by adding _hostname/_username to the variable name:
+
+    url_host1="https://host1.example.org"
+    url_host2="https://anotherhost.example.org"
+
+    token_librarian="...:..."
+    token_guest="...:..."
+
 2:  Create environment variables with the required info, e.g.
 
     $ BOOKSTACK_URL="https://bookstack.example.org"
@@ -38,6 +48,19 @@ Environment variables take precedence over the configuration file, this makes
 it possible to temporarily use a different instance or account:
 
     $ BOOKSTACK_TOKEN="...:..." bs books list
+
+## BS_OPTIONS
+
+As stated above it is possible to add named hosts and users in the
+configuration file. Use the following options to select one of these:
+
+    -H HOSTNAME     use the host configured as url_HOSTNAME in bs.conf
+    -U USERNAME     use the token configured as token_USERNAME in bs.conf
+    -h              show this help message (also: bs help, bs -help, bs --help)
+
+These options have to come directly after the program name:
+
+    bs -H local_library -U librarian books list
 
 
 ## API ENDPOINTS
@@ -67,7 +90,7 @@ supported in _bs_:
     list, restore, destroy
 
 
-## OPTIONS
+## API_OPTIONS
 
 API parameters are passed as options, check the API documentation [1]
 to learn which parameters are available. Use these options for:
@@ -224,6 +247,10 @@ Restore entry #34 from the recycle bin
 Create a user
 
     bs users create -n "Billy Bob" -e "billybob@example.org" -L "Klingon" -p "b1llyb0b123"
+
+List the first 500 books on host `remote_library` as seen by user `guest`
+
+    bs -H remote_library -U guest books list -c 500
 
 Edit the _bs_ config file
 
