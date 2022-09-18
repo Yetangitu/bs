@@ -4,8 +4,8 @@ trap "trap_error" TERM
 trap "trap_clean" EXIT
 export TOP_PID=$$
 
-version="0.0.1"
-release="20220914"
+version="0.0.2"
+release="20220918"
 
 tmpdir=$(mktemp -d /tmp/bs.XXXXXX)
 
@@ -24,28 +24,45 @@ main () {
     curl=$(find_tool "curl")
     jq=$(find_tool "jq")
 
-    target="$1"
-    shift
+    # curl/jq options
+    curl_options=("-s" "--http1.1" "--header" "Authorization: Token $token")
+    jq_json_escape_options=("-Rsa")
 
-    if [ -z $url -a -z $token ]; then
-    printf "$0: No config file and no environment variables set, can not continue.\n\nEither create a config file by executing '$0 config' or provide\nthe needed configuration data by setting BOOKSTACK_URL and\nBOOKSTACK_TOKEN - see 'bs help' for more info.\n\n"
-
-        case $target in
-            help)
+    while getopts "hH:U:" OPTION $1 $2 $3 $4
+    do
+        case "$OPTION" in
+            h)
                 show_help
+                exit
                 ;;
 
-            config)
-                edit_config
+            H)
+                host="url_$OPTARG"
+                if [ -n "${!host}" ]; then
+                    url="${!host}"
+                else
+                    exit_with_error "unknown host : $OPTARG"
+                fi
                 ;;
 
-            *)
-                exit_with_error "Only \"bs config\" and \"bs help\" are available without a valid url/token"
+            U)
+                user="token_$OPTARG"
+                if [ -n "${!user}" ]; then
+                    token="${!user}"
+                else
+                    exit_with_error "no such user token: $OPTARG"
+                fi
                 ;;
         esac
+    done
 
-    exit 1
+    if [ $OPTIND -gt 1 ]; then
+        shift $((OPTIND-1))
+        OPTIND=1
     fi
+
+    target="$1"
+    shift
 
     case $target in
         books|chapters|pages)
@@ -60,7 +77,7 @@ main () {
             $target "$@"
             ;;
 
-        help)
+        help|-help|--help)
             show_help
             ;;
 
@@ -69,7 +86,7 @@ main () {
             ;;
 
         *)
-            exit_with_error "unknown API endpoint: $target"
+            exit_with_error "unknown API endpoint: $target\n\nuse 'bs -h' for usage information"
             ;;
     esac
 }
@@ -456,7 +473,7 @@ crud () {
             if [ -n "$content" ]; then
                 tmpfile="$tmpdir/data.json"
                 echo "{$data,\"$content_type\":" > "$tmpfile"
-                "$jq" -Rsa . "$content" >> "$tmpfile"
+                "$jq" "${jq_json_escape_options[@]}" . "$content" >> "$tmpfile"
                 echo "}" >> "$tmpfile"
                 post $branch --json "@$tmpdir/data.json"
                 unlink "$tmpfile"
@@ -477,7 +494,7 @@ crud () {
             if [ -n "$content" ]; then
                 tmpfile="$tmpdir/data.json"
                 echo "{$data,\"$content_type\":" > "$tmpfile"
-                "$jq" -Rsa . "$content" >> "$tmpfile"
+                "$jq" "${jq_json_escape_options[@]}" . "$content" >> "$tmpfile"
                 echo "}" >> "$tmpfile"
                 put $branch "$id" --json "@$tmpdir/data.json"
                 unlink "$tmpfile"
@@ -508,7 +525,7 @@ get () {
     target="$3"
     shift 3
 
-    "$curl" --http1.1 --header "Authorization: Token $token" --request GET --url "$url/api/$endpoint${id:+/}$id${target:+/}$target"
+    "$curl" "${curl_options[@]}" --request GET --url "$url/api/$endpoint${id:+/}$id${target:+/}$target"
 }
 
 put () {
@@ -516,14 +533,14 @@ put () {
     id="$2"
     shift 2
 
-    "$curl" --http1.1 --header "Authorization: Token $token" --request PUT --url "$url/api/$endpoint/$id" "$@"
+    "$curl" "${curl_options[@]}" --request PUT --url "$url/api/$endpoint/$id" "$@"
 }
 
 post () {
     endpoint="$1"
     shift
 
-    "$curl" --http1.1 --header "Authorization: Token $token" --request POST --url "$url/api/$endpoint" "$@"
+    "$curl" "${curl_options[@]}" --request POST --url "$url/api/$endpoint" "$@"
 }
 
 delete () {
@@ -531,7 +548,7 @@ delete () {
     id="$2"
     shift 2
 
-    "$curl" --http1.1 --header "Authorization: Token $token" --request DELETE --url "$url/api/$endpoint/$id" "$@"
+    "$curl" "${curl_options[@]}" --request DELETE --url "$url/api/$endpoint/$id" "$@"
 }
 
 # -- utility functions
@@ -579,7 +596,7 @@ urlencode () {
 }
 
 json_escape () {
-    echo "$1"|"$jq" -Rsa .
+    echo "$1"|"$jq" "${jq_json_escape_options[@]}" .
 }
 
 edit_config () {
@@ -635,7 +652,7 @@ show_help () {
     echo "$(basename "$(readlink -f "$0")")" "version $version"
     cat << 'EOF'
 
-    Use: bs <target> <endpoint> OPTIONS
+    Use: bs BS_OPTIONS <target> <endpoint> API_OPTIONS
 
     This is bs, a command line client for the BookStack wiki engine. It
     enables easy command line access to all exported API functions and as
@@ -663,6 +680,16 @@ show_help () {
             This is only an example, replace the values with those relevant
             to your BookStack instance and account.
 
+            In addition to the default url=/token= parameters bs also supports
+            named hosts and users which can be selected on invocation, these
+            are configured by adding _hostname/_username to the variable name:
+
+            url_host1="https://host1.example.org"
+            url_host2="https://anotherhost.example.org"
+
+            token_librarian="...:..."
+            token_guest="...:..."
+
         2:  Create environment variables with the required info, e.g.
 
             $ BOOKSTACK_URL="https://bookstack.example.org"
@@ -674,6 +701,19 @@ show_help () {
         account:
 
         $ BOOKSTACK_TOKEN="...:..." bs books list
+
+    BS_OPTIONS
+
+    As stated above it is possible to add named hosts and users in the
+    configuration file. Use the following options to select one of these:
+
+        -H HOSTNAME     use the host configured as url_HOSTNAME in bs.conf
+        -U USERNAME     use the token configured as token_USERNAME in bs.conf
+        -h              show this help message (also: bs help, bs -help, bs --help)
+
+    These options have to come directly after the program name:
+
+        bs -H local_library -U librarian books list
 
 
     API ENDPOINTS
@@ -703,7 +743,7 @@ show_help () {
             list, restore, destroy
 
 
-    OPTIONS
+    API_OPTIONS
 
     API parameters are passed as options, check the API documentation [1]
     to learn which parameters are available. Use these options for:
@@ -860,6 +900,10 @@ show_help () {
     Create a user
 
         bs users create -n "Billy Bob" -e "billybob@example.org" -L "Klingon" -p "b1llyb0b123"
+
+    List the first 500 books on host remote_library as seen by user guest
+
+        bs -H remote_library -U guest books list -c 500
 
     Edit the bs config file
 
