@@ -4,8 +4,8 @@ trap "trap_error" TERM
 trap "trap_clean" EXIT
 export TOP_PID=$$
 
-version="0.0.2"
-release="20220918"
+version="0.0.3"
+release="20230217"
 
 tmpdir=$(mktemp -d /tmp/bs.XXXXXX)
 
@@ -475,13 +475,13 @@ crud () {
                 echo "{$data,\"$content_type\":" > "$tmpfile"
                 "$jq" "${jq_json_escape_options[@]}" . "$content" >> "$tmpfile"
                 echo "}" >> "$tmpfile"
-                post $branch --json "@$tmpdir/data.json"
+                post $branch -H 'Content-Type: application/json' --data "@$tmpdir/data.json"
                 unlink "$tmpfile"
             else
                 if [ -n "$form" ]; then
                     post $branch "${fdata[@]}" -F "$form"
                 else
-                    post $branch --json "{$data}"
+                    post $branch -H 'Content-Type: application/json' --data "{$data}"
                 fi
             fi
             ;;
@@ -496,20 +496,20 @@ crud () {
                 echo "{$data,\"$content_type\":" > "$tmpfile"
                 "$jq" "${jq_json_escape_options[@]}" . "$content" >> "$tmpfile"
                 echo "}" >> "$tmpfile"
-                put $branch "$id" --json "@$tmpdir/data.json"
+                put $branch "$id" -H 'Content-Type: application/json' --data "@$tmpdir/data.json"
                 unlink "$tmpfile"
             else
                 if [ -n "$form" ]; then
                     put $branch "$id" "${fdata[@]}" -F "$form"
                 else
-                    put $branch "$id" --json "{$data}"
+                    put $branch "$id" -H 'Content-Type: application/json' --data "{$data}"
                 fi
             fi
             ;;
 
         delete)
             if [ -n "$data" ]; then
-                delete $branch "$id" --json "{$data}"
+                delete $branch "$id" -H 'Content-Type: application/json' --data "{$data}"
             else
                 delete $branch "$id"
             fi
